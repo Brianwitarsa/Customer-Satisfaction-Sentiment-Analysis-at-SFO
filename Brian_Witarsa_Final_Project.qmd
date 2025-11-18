@@ -1,0 +1,282 @@
+---
+title: "Brian_Witarsa_Final_Project"
+format: html
+editor: visual
+---
+
+## Part One
+
+This analysis investigates customer satisfaction in San Francisco International Airport. The report explores the impact of demographic factors on customer satisfaction through factor analysis, and qualitative factors through sentiment analysis.
+
+```{r}
+library(psych)
+library(tidyverse)
+library(lavaan)
+library(semPlot)
+library(ggplot2)
+library(sentimentr)
+```
+
+```{r}
+data <- read_delim("SFO_survey_withText.txt", delim = "\t")
+```
+
+```{r}
+cols <- c("Q6A", "Q6B", "Q6C", "Q6D", "Q6E", "Q6F", "Q6G", 
+          "Q6H", "Q6I", "Q6J", "Q6K", "Q6L", "Q6M", "Q6N")
+
+
+df <- data[cols]
+df
+```
+
+```{r}
+n <- nrow(df)
+idx <- sample(seq_len(n), size = floor(0.7 * n))
+train <- df[idx, ]
+test  <- df[-idx, ]
+```
+
+```{r}
+n_train <- nrow(train)
+
+n_test <- nrow(test)
+```
+
+```{r}
+KMO(train)
+```
+
+```{r}
+
+fa.parallel(train, n.obs = n_train)
+```
+
+```{r}
+efa <- fa(train, n.obs = n_train, rotate = "none", nfactors = 3)
+efa
+```
+
+```{r}
+efa1 <- fa(train, n.obs = n_train, rotate = "none", nfactors = 4)
+efa1
+
+```
+
+```{r}
+efa2 <- fa(train, n.obs = n_train, rotate = "varimax", nfactors = 4)
+efa2
+```
+
+```{r}
+efa3 <- fa(train, n.obs = n_train, rotate = "promax", nfactors = 4)
+efa3
+```
+
+The fa.parallel function recommended we use 4 factors. Doing the first efa with rotate = "none", we found that the TLI was \> 0.9 and the RMSEA was around 0.07, less than 0.1, but not quite 0.05. I tested other EFAs with factors less than 4, but it produced much lower TLI and higher RMSEA than the 4 factor model.
+
+To compare models, I chose to compare the different rotations (none, orthogonal, oblique). Comparing the mean item complexity for all 3, we can see that none rotation has the highest complexity at 2.1, followed by orthogonal at 1.4, and finally oblique with the least at 1.1.
+
+In the unrotated model, the loading matrix shows many items with cross loadings, thus making interpretation difficult. With varimax rotation, the loadings are cleaner, as each factor is defined by several items with strong primary loadings and reduced overlap. With promax rotation, the loading matrix shows the simplest structure, with clear item–factor groupings.
+
+Factor Correlations for Oblique rotation:
+
+```         
+ MR2  MR1  MR3  MR4
+```
+
+MR2 1.00 0.37 0.42 0.45 MR1 0.37 1.00 0.43 0.62 MR3 0.42 0.43 1.00 0.47 MR4 0.45 0.62 0.47 1.00
+
+## Part Two
+
+```{r}
+confirm_3Fac <- "
+F1 =~ Q6A + Q6B + Q6C + Q6D + Q6E + Q6F + Q6I + Q6N
+F2 =~ Q6J + Q6K + Q6L + Q6M
+F3 =~ Q6G + Q6H
+"
+
+fit_3Fac <- lavaan::cfa(confirm_3Fac, data=test, std.lv = TRUE)
+summary(fit_3Fac, fit.measures = T, standardized = T)
+semPaths(fit_3Fac)
+
+```
+
+```{r}
+confirm_4Fac <- "
+F1 =~ Q6D + Q6E + Q6F + Q6N
+F2 =~ Q6I + Q6J + Q6K + Q6L + Q6M
+F3 =~ Q6G + Q6H
+F4 =~ Q6A + Q6B + Q6C
+"
+fit_4Fac <- lavaan::cfa(confirm_4Fac, data=test, std.lv = TRUE)
+summary(fit_4Fac, fit.measures = T, standardized = T)
+semPaths(fit_4Fac)
+
+
+```
+
+The 4 factor CFA had higher CLI and TLI than the results from the 3 factor CFA. It also had a lower RMSEA, with the 3 factor model producing an RMSEA of 0.114, over the 0.1 threshold for a decent fit.
+
+```{r}
+modificationindices(fit_4Fac, sort=TRUE)
+
+```
+
+```{r}
+confirm_4Fac <- "
+F1 =~ Q6D + Q6E + Q6F + Q6N
+F2 =~ Q6I + Q6J + Q6K + Q6L + Q6M
+F3 =~ Q6G + Q6H
+F4 =~ Q6A + Q6B + Q6C
+
+
+Q6K ~~ Q6M
+"
+fit_4Fac <- lavaan::cfa(confirm_4Fac, data=test, std.lv = TRUE)
+summary(fit_4Fac, fit.measures = T, standardized = T)
+semPaths(fit_4Fac)
+```
+
+## Part Three
+
+Factors:
+
+F1: Terminal Navigation and Wayfinding
+
+F2: Parking, Transit, and Access
+
+F3: Information and Customer Assistance
+
+F4: Amenities and Concessions
+
+```{r}
+fs <- as.data.frame(lavPredict(fit_4Fac, method = "regression"))
+
+used_idx <- lavInspect(fit_4Fac, "case.idx")
+
+dems_cols <- c("Q17","Q18","COUNTRY","Q19")
+dem_test  <- data[-idx, dems_cols]
+dem_used  <- dem_test[used_idx, , drop = FALSE] 
+
+dem_scores <- bind_cols(fs, dem_used)
+```
+
+## Effect of Household income on Amenities and Concessions (F4) rating
+
+```{r}
+inference1 <- dem_scores %>%
+  filter(Q19 %in% 1:5) %>%
+  mutate(Income = factor(Q19,
+                         levels = 1:5,
+                         labels = c("Under_50K","50_100K","100_150K","Over_150K","Other")))
+
+
+
+anova_F4 <- aov(F4 ~ Income, data = inference1)
+summary(anova_F4)
+```
+
+Null Hypothesis: There is no difference in mean Amenities and Concessions (F4) scores across household income groups.
+
+Alternate Hypothesis: At least one income group’s mean F4 score differs from the others.
+
+Since p = 0.000335, it is \< 0.05, and therefore we reject the null hypothesis. Household income has a statistically significant impact on their Amenities and Concessions (F4) scores.
+
+```{r}
+lm_F4 <- lm(F4 ~ Income, data = inference1)
+summary(lm_F4)
+```
+
+```{r}
+
+
+ggplot(inference1, aes(x=Income, y=F4, fill=Income)) + geom_boxplot()
+```
+
+Linear Regression confirms that least 2 income groups differ on F4, with the under 50k group scoring higher for F4 than other groups, especially the over 150k bracket.
+
+## Effect of Gender and Age on Parking, Transit, and Access (F4) rating
+
+```{r}
+inference2 <- dem_scores %>%
+  filter(Q17 %in% 1:7, Q18 %in% 1:2) %>%
+  mutate(Age    = as.numeric(Q17),  
+         Gender = factor(Q18, levels = c(1,2), labels = c("Male","Female")))
+
+
+mod_F1 <- lm(F1 ~ Age + Gender, data = inference2)
+
+summary(mod_F1)
+```
+
+### Age
+
+Null Hypothesis: Age has no effect on F1 Alternative Hypothesis: Age has a significant effect on F1
+
+### Gender
+
+Null Hypothesis: There is no difference in mean F1 scores between males and females Alternative Hypothesis: There is a significant difference in mean F1 scores between males and females
+
+The Gender effect was statistically significant (p = 0.001). Female passengers reported higher satisfaction with terminal navigation and information systems than males.
+
+The Age effect was marginal (p = 0.08). It suggests that older travelers may rate navigation better, but since p \> 0.05, it is not statistically significant.
+
+So overall, female passengers tend to rate the airport’s signage and navigation systems more positively than males. There is a non-significant tendency for older passengers to do the same.
+
+## Part Four
+
+```{r}
+free_response <- data["Q7_text_All"]
+free_response
+```
+
+```{r}
+fr <- get_sentences(free_response)
+
+sentiment_scores <- sentiment_by(fr)
+sentiment_scores
+```
+
+```{r}
+sentiment_demo <- data %>%
+  select(Q17, Q18, Q19) %>%
+  mutate(element_id = row_number()) %>%
+  left_join(sentiment_scores, by = "element_id")
+
+
+sent_by_income <- sentiment_demo %>%
+  filter(Q19 %in% 1:5) %>%
+  mutate(Income = factor(Q19,
+                         labels = c("Under_50K", "50_100K", "100_150K", "Over_150K", "Other"))) %>%
+  group_by(Income) %>%
+  summarize(mean_sent = mean(ave_sentiment, na.rm = TRUE),
+            sd_sent = sd(ave_sentiment, na.rm = TRUE),
+            n = n())
+
+ggplot(sent_by_income, aes(x = Income, y = mean_sent)) +
+  geom_col()
+```
+
+Our sentiment analysis clearly shows the mean sentiment scores decreasing as income increases. This could be due to several factors, namely that those earning more tend to have a higher standard of living compared to lower income brackets. This may cause them to be unhappy with the airport experience. Those with higher income brackets may also tend to fly more often, and may have more negative experiences as a result.
+
+## Conclusion
+In summary, this study provides a comprehensive look at passenger satisfaction at SFO:
+1. Four key satisfaction dimensions were identified
+
+F1: Terminal Navigation and Wayfinding
+
+F2: Parking, Transit, and Access
+
+F3: Information and Customer Assistance
+
+F4: Amenities and Concessions
+
+2. Demographic differences exist: lower-income passengers reported more positive experiences, while higher-income travelers were more critical.
+
+3. Qualitative feedback aligns with survey findings. Passengers in lower income brackets were generally more positive than their higher income counterparts.
+
+## Recommendations
+1. Tailor Communication for different income groups. Higher income customers may value a faster, more convenient experience while lower income customers may value the airport's ammenities more.
+
+2. Enhance Parking, Transit, and Access. 
