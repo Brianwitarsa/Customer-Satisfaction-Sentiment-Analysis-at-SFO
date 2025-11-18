@@ -68,11 +68,6 @@ The final selected model includes:
 - Achieved strong final model fit (CFI = 0.981, TLI = 0.973, RMSEA = 0.041).
 - Enhanced insights by combining factor analysis with sentiment analysis of passenger feedback.
 
-## Repository Structure
-- `data/` (optional) - survey datasets
-- `scripts/` - R scripts for EFA, CFA, diagnostics, and sentiment analysis
-- `results/` - output tables, fit statistics, and plots
-- `README.md` - project overview and instructions
 
 Links: 
 - [Code and Report](https://github.com/Brianwitarsa/Customer-Satisfaction-Sentiment-Analysis-at-SFO/blob/main/Brian_Witarsa_Final_Project.html)
